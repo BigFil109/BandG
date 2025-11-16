@@ -2,7 +2,7 @@
    FASTNET Sender + NMEA0183 MWV Reader
    For Arduino Pro Mini / Nano / UNO (one hardware UART)
 
-   Hardware Serial  -> FASTNET output (11000 baud, 8E2)
+   Hardware Serial  -> FASTNET output (11000 baud, 8O2)
    SoftwareSerial   -> NMEA0183 input ($xxMWV)
 */
 
@@ -111,7 +111,7 @@ void processMWV(String s)
         // Send FASTNET
         fastnet_add_channel(FASTNET_CH_AWA, 8, 0, 0, awa);
         fastnet_add_channel(FASTNET_CH_AWS, 1, 0, 2, aws);
-        fastnet_add_channel(FASTNET_CH_VOLTAGE, 8, 0, 2, 12.0);
+        fastnet_add_channel(FASTNET_CH_VOLTAGE, 8, 0, 2, 11.6);
 
         fastnet_flush();
     }
@@ -145,7 +145,7 @@ void readNMEA()
 void setup()
 {
     // FASTNET output using hardware serial
-    Serial.begin(11000, SERIAL_8E2);
+    Serial.begin(11000, SERIAL_8O2);
 
     // NMEA0183 input on SoftwareSerial
     nmeaSerial.begin(4800);
