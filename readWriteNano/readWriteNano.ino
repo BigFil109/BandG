@@ -9,7 +9,7 @@
 #include <SoftwareSerial.h>
 
 // ---------------- SOFTWARE SERIAL FOR NMEA0183 ----------------
-SoftwareSerial nmeaSerial(10, 9);  // RX=8, TX=9 (TX unused)
+SoftwareSerial nmeaSerial(8, 9);  // RX=8, TX=9 (TX unused)
 
 // ---------------- FASTNET CONSTANTS ----------------
 const uint8_t FASTNET_DIVISORS[] = {1, 10, 100, 1000};
