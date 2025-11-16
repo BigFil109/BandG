@@ -2,9 +2,9 @@
    FASTNET Sender + NMEA0183 MWV Reader
    Arduino Mega Version
 
-   Serial (TX0 = pin 1)  -> FASTNET output 11000 baud 8O2
-   Serial1 (RX1 = pin 19) -> NMEA0183 input 4800 baud
-   Serial (USB)           -> Log output 115200
+   Serial0 (USB)       -> Debug log ONLY, 115200 baud
+   Serial1 (RX1 pin 19)-> NMEA0183 input, 4800 baud
+   Serial2 (TX2 pin 17)-> FASTNET output, 11000 baud 8O2
 */
 
 // ---------------- FASTNET CONSTANTS ----------------
@@ -36,7 +36,7 @@ uint8_t fastnet_crc(uint8_t *data, uint8_t size, uint8_t init = 0)
 }
 
 
-// ---------------- FASTNET CHANNEL PACKING ----------------
+// ---------------- FASTNET PACKING ----------------
 void fastnet_add_channel(uint8_t ch, uint8_t fmt, uint8_t size, uint8_t divisor, float value)
 {
     if ((sizeof(fastnet_buf) - fastnet_buf_size) <= FASTNET_FMT_BYTES[fmt])
@@ -60,13 +60,13 @@ void fastnet_add_channel(uint8_t ch, uint8_t fmt, uint8_t size, uint8_t divisor,
     if (fmt == 8)
     {
         fastnet_buf[offset]     = (val >> 8) & 0xFF;
-        fastnet_buf[offset + 1] = (val & 0xFF);
+        fastnet_buf[offset + 1] = val & 0xFF;
         fastnet_buf_size = offset + 2;
     }
 }
 
 
-// ---------------- SEND PACKET ----------------
+// ---------------- SEND FASTNET ON SERIAL2 ----------------
 void fastnet_flush()
 {
     fastnet_header[2] = fastnet_buf_size;
@@ -75,8 +75,8 @@ void fastnet_flush()
     fastnet_buf[fastnet_buf_size] =
         fastnet_crc(fastnet_buf, fastnet_buf_size, 0x56);
 
-    Serial.write(fastnet_header, 5);
-    Serial.write(fastnet_buf, fastnet_buf_size + 1);
+    Serial2.write(fastnet_header, 5);
+    Serial2.write(fastnet_buf, fastnet_buf_size + 1);
 
     fastnet_buf_size = 0;
 }
@@ -87,7 +87,7 @@ String nmeaLine = "";
 
 void processMWV(String s)
 {
-    // Split CSV fields
+    // Split CSV
     int idx = 0;
     String part[10];
     while (s.length() && idx < 10)
@@ -104,13 +104,16 @@ void processMWV(String s)
 
     if (idx < 6) return;
 
-    // MWV sentence with status "A"
     if (part[0].endsWith("MWV") && part[5].startsWith("A"))
     {
         float awa = part[1].toFloat();
         float aws = part[3].toFloat();
 
-        // Build FASTNET channels
+        Serial.print("MWV received AWA=");
+        Serial.print(awa);
+        Serial.print(" AWS=");
+        Serial.println(aws);
+
         fastnet_add_channel(FASTNET_CH_AWA, 8, 0, 0, awa);
         fastnet_add_channel(FASTNET_CH_AWS, 1, 0, 2, aws);
         fastnet_add_channel(FASTNET_CH_VOLTAGE, 8, 0, 2, 11.6);
@@ -125,8 +128,7 @@ void readNMEA()
     {
         char c = Serial1.read();
 
-        // log raw characters
-        Serial.print(c);  
+        Serial.write(c);  // USB log only
 
         if (c == '$') {
             nmeaLine = "$";
@@ -142,8 +144,7 @@ void readNMEA()
             }
             nmeaLine = "";
         }
-        else
-        {
+        else {
             nmeaLine += c;
         }
     }
@@ -153,17 +154,13 @@ void readNMEA()
 // --------------------------- SETUP ----------------------------
 void setup()
 {
-    // USB monitor
-    Serial.begin(115200);  
-    delay(500);
-    Serial.println("FASTNET + NMEA bridge running...");
+    Serial.begin(115200);                    // USB debug only
+    Serial1.begin(4800);                     // NMEA input on pin 19
+    Serial2.begin(11000, SERIAL_8O2);        // FASTNET output on pin 17
 
-    // FASTNET output on Serial0 pins 0/1
-    Serial.begin(11000, SERIAL_8O2);
-
-    // NMEA0183 input on pin 19 (RX1)
-    Serial1.begin(4800);
-    Serial.println("Listening for NMEA on pin 19 (Serial1 RX1)...");
+    Serial.println("NMEA->FASTNET bridge ready.");
+    Serial.println("Listening on pin 19 (RX1).");
+    Serial.println("Sending FASTNET on pin 17 (TX2).");
 }
 
 
