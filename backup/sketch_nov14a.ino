@@ -1,0 +1,161 @@
+/*
+    Arduino FASTNET packet generator with NMEA0183 input
+    Reads $--MWV from Serial1 and sends AWA/AWS out as FASTNET
+*/
+
+#include <Arduino.h>
+
+// ---------------- FASTNET CONSTANTS ----------------
+const uint8_t FASTNET_DIVISORS[] = {1, 10, 100, 1000};
+
+const uint8_t FASTNET_FMT_BYTES[] = {
+    0, 4, 4, 5,
+    6, 0, 0, 0,
+    4, 0, 0, 6,
+    0, 0, 0, 0
+};
+
+#define FASTNET_CH_AWA      0x51
+#define FASTNET_CH_AWS      0x50
+#define FASTNET_CH_VOLTAGE  0x8D
+
+uint8_t fastnet_header[5] = {0xFF, 0x75, 0x14, 0x01, 0x77};
+uint8_t fastnet_buf[81];
+uint8_t fastnet_buf_size = 0;
+
+// ---------------- CRC ----------------
+uint8_t fastnet_crc(uint8_t *data, uint8_t size, uint8_t init = 0)
+{
+    uint16_t crc = init;
+    for (int i = 0; i < size; i++)
+        crc += data[i];
+    return (0x100 - (crc & 0xFF)) & 0xFF;
+}
+
+// ---------------- FASTNET CHANNEL PACKING ----------------
+void fastnet_add_channel(uint8_t ch, uint8_t fmt, uint8_t size, uint8_t divisor, float value)
+{
+    if ((sizeof(fastnet_buf) - fastnet_buf_size) <= FASTNET_FMT_BYTES[fmt])
+        return;
+
+    uint8_t offset = fastnet_buf_size;
+    fastnet_buf[offset] = ch;
+    fastnet_buf[offset + 1] = (fmt & 0xF) | ((size & 0x3) << 4) | ((divisor & 0x3) << 6);
+    offset += 2;
+
+    int32_t val = round(value * FASTNET_DIVISORS[divisor]);
+
+    if (fmt == 1) {
+        if (val < 0)
+            val = 0x10000 + val;
+        fmt = 8;
+    }
+
+    if (fmt == 8) {
+        fastnet_buf[offset]     = (val >> 8) & 0xFF;
+        fastnet_buf[offset + 1] = (val & 0xFF);
+        fastnet_buf_size = offset + 2;
+    }
+}
+
+// ---------------- SEND PACKET ----------------
+void fastnet_flush()
+{
+    fastnet_header[2] = fastnet_buf_size;
+    fastnet_header[4] = fastnet_crc(fastnet_header, 4);
+
+    fastnet_buf[fastnet_buf_size] = fastnet_crc(fastnet_buf, fastnet_buf_size, 0x56);
+
+    Serial.write(fastnet_header, 5);
+    Serial.write(fastnet_buf, fastnet_buf_size + 1);
+
+    fastnet_buf_size = 0;
+}
+
+// -----------------------------------------------------------
+// ---------------------- NMEA0183 PARSER ----------------------
+// -----------------------------------------------------------
+
+String nmeaBuffer = "";
+
+void processMWV(String s)
+{
+    // Example: $WIMWV,045,R,12.3,N,A
+    // split by comma
+    int idx = 0;
+    String parts[10];
+
+    while (s.length() && idx < 10)
+    {
+        int comma = s.indexOf(',');
+        if (comma == -1) {
+            parts[idx++] = s;
+            break;
+        }
+        parts[idx++] = s.substring(0, comma);
+        s.remove(0, comma + 1);
+    }
+
+    if (idx < 6) return;
+
+    if (parts[0].endsWith("MWV") && parts[5].startsWith("A"))
+    {
+        float awa = parts[1].toFloat();
+        float aws = parts[3].toFloat();
+
+        // Build FASTNET packet
+        fastnet_add_channel(FASTNET_CH_AWA, 8, 0, 0, awa);
+        fastnet_add_channel(FASTNET_CH_AWS, 1, 0, 2, aws);
+
+        float voltage = 13.2;
+        fastnet_add_channel(FASTNET_CH_VOLTAGE, 8, 0, 2, voltage);
+
+        fastnet_flush();
+    }
+}
+
+void readNMEA()
+{
+    while (Serial1.available())
+    {
+        char c = Serial1.read();
+
+        if (c == '$') {
+            nmeaBuffer = "$";
+            continue;
+        }
+
+        if (c == '\n' || c == '\r') {
+            if (nmeaBuffer.startsWith("$") && nmeaBuffer.indexOf("MWV") > 0) {
+                String noChecksum = nmeaBuffer.substring(0, nmeaBuffer.indexOf('*'));
+                processMWV(noChecksum);
+            }
+            nmeaBuffer = "";
+        }
+        else {
+            nmeaBuffer += c;
+        }
+    }
+}
+
+// -----------------------------------------------------------
+// --------------------------- SETUP ---------------------------
+// -----------------------------------------------------------
+
+void setup()
+{
+    // FASTNET UART → Serial
+    Serial.begin(11000, SERIAL_8E2);
+
+    // NMEA0183 input → Serial1 (Mega pin 19)
+    Serial1.begin(4800);  // standard NMEA baudrate
+}
+
+// -----------------------------------------------------------
+// --------------------------- LOOP ----------------------------
+// -----------------------------------------------------------
+
+void loop()
+{
+    readNMEA();
+}
