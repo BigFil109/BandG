@@ -105,6 +105,11 @@ void parseMWV(String s)
     float angle = p[1].toFloat();
     float speed = p[3].toFloat();
 
+    if (angle > 180.0) {
+        angle = (float)angle - 360.0;
+    }
+
+
     if (p[2] == "R") {  // Apparent
         fastnet_add_channel(FASTNET_CH_AWA, 8, 0, 0, angle);
         fastnet_add_channel(FASTNET_CH_AWS, 1, 0, 2, speed);
