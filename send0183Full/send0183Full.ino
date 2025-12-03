@@ -16,7 +16,7 @@ unsigned long lastFast = 0;
 unsigned long lastZDA = 0;
 
 // --- Simulated values ---
-int awa = 0;               
+float awa = 0;               
 float aws = 0.0;
 
 int twa = 0;               
@@ -29,6 +29,8 @@ float stw = 0.0;
 
 float bearing = 0.0;
 float distance_nm = 0.1;
+
+float vmg = 0.0;          // Velocity Made Good
 
 // ---- Time Simulation ----
 // Starts at 12:00:00 UTC on 2025-01-01
@@ -87,7 +89,7 @@ void setup() {
     Serial.begin(4800);
     delay(500);
 }
-
+  
 // ---------------- MAIN LOOP --------------
 void loop() {
 
@@ -117,7 +119,11 @@ void loop() {
         lastFast = now;
 
         // --- Simulated values ---
-        awa = (awa + 3) % 360;
+        awa = (awa + 3.0);
+        if(awa > 360.0) {
+            awa = 0.0;
+        }
+  
         aws += 0.2; if (aws > 20) aws = 0;
 
         twa = (twa + 2) % 360;
@@ -130,6 +136,8 @@ void loop() {
 
         bearing += 1; if (bearing >= 360) bearing = 0;
         distance_nm -= 0.01; if (distance_nm < 0.1) distance_nm = 5.0;
+
+        vmg += 0.2; if (vmg > 20) vmg = 0;
 
         // ------ MWV Apparent ------
         sendNMEA("$WIMWV," +
@@ -164,6 +172,11 @@ void loop() {
         sendNMEA("$IIRMB,A,1.0,,START,END,,,,," +
                  String(distance_nm,2) + ",N," +
                  String(bearing,1) + ",T,,,");
+         // ------ VMG ------
+        sendNMEA("$IIVMG," +
+                 String(vmg,2) + ",N," +  // Use 'N' for knots
+                 "A");                     // 'A' for valid/active
+
 
     }
 }

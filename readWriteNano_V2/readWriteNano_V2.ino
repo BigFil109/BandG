@@ -1,5 +1,5 @@
 /*
-   FASTNET Sender + Full NMEA0183 Reader
+   FASTNET Sender + Full NMEA0183 Reader + VMG Output
    Nano Version — NO serial console output
 
    FASTNET OUT : Hardware Serial TX (Pin 1)
@@ -25,6 +25,7 @@ const uint8_t FASTNET_FMT_BYTES[] = {
 #define FASTNET_CH_STW        0x61
 #define FASTNET_CH_RNG_NXT    0x70
 #define FASTNET_CH_BRNG_NXT   0x71
+#define FASTNET_CH_VMG        0x62     // NEW — assigned VMG output channel
 #define FASTNET_CH_VOLTAGE    0x8D
 
 uint8_t fastnet_header[5] = {0xFF, 0x75, 0x14, 0x01, 0x77};
@@ -85,9 +86,25 @@ void fastnet_flush()
 // ---------------- NMEA BUFFER ---------------------
 String nmeaLine = "";
 
+// ---------------- VMG STATE -----------------------
+float lastSOG = NAN;
+float lastSTW = NAN;
+float lastAWA = NAN;
+float lastTWA = NAN;
+float lastHDG = NAN;
+float lastVMG = NAN;
+
 // ===================================================
 // ===============  PARSER FUNCTIONS  ================
 // ===================================================
+
+void outputVMG()
+{
+    if (!isnan(lastVMG)) {
+        fastnet_add_channel(FASTNET_CH_VMG, 1, 0, 2, lastVMG);
+        fastnet_flush();
+    }
+}
 
 void parseMWV(String s)
 {
@@ -105,21 +122,26 @@ void parseMWV(String s)
     float angle = p[1].toFloat();
     float speed = p[3].toFloat();
 
-    if (angle > 180.0) {
-        angle = (float)angle - 360.0;
-    }
-
+    if (angle > 180.0) angle -= 360.0;
 
     if (p[2] == "R") {  // Apparent
+        lastAWA = angle;
         fastnet_add_channel(FASTNET_CH_AWA, 8, 0, 0, angle);
         fastnet_add_channel(FASTNET_CH_AWS, 1, 0, 2, speed);
     }
 
     if (p[2] == "T") {  // True
+        lastTWA = angle;
         fastnet_add_channel(FASTNET_CH_TWS, 1, 0, 2, speed);
     }
 
     fastnet_flush();
+
+    // Try computing VMG if possible
+    if (!isnan(lastTWA) && !isnan(lastSOG)) {
+        lastVMG = lastSOG * cos(radians(lastTWA));
+        outputVMG();
+    }
 }
 
 void parseDPT(String s)
@@ -144,6 +166,8 @@ void parseVTG(String s)
     }
 
     float sog = p[7].toFloat();
+    lastSOG = sog;
+
     fastnet_add_channel(FASTNET_CH_SOG, 1, 0, 2, sog);
     fastnet_flush();
 }
@@ -160,6 +184,8 @@ void parseVBW(String s)
     }
 
     float stw = p[1].toFloat();
+    lastSTW = stw;
+
     fastnet_add_channel(FASTNET_CH_STW, 1, 0, 2, stw);
     fastnet_flush();
 }
@@ -180,12 +206,11 @@ void parseRMB(String s)
 
     fastnet_add_channel(FASTNET_CH_RNG_NXT, 1, 0, 2, range);
     fastnet_add_channel(FASTNET_CH_BRNG_NXT, 1, 0, 0, bearing);
-
     fastnet_flush();
 }
 
 // ===================================================
-// ================   READ NMEA  =====================
+// ==================== READ NMEA ====================
 // ===================================================
 void readNMEA()
 {
@@ -200,7 +225,10 @@ void readNMEA()
 
         if (c == '\n' || c == '\r')
         {
-            if (!nmeaLine.startsWith("$")) { nmeaLine = ""; continue; }
+            if (!nmeaLine.startsWith("$")) {
+                nmeaLine = "";
+                continue;
+            }
 
             String body = nmeaLine.substring(0, nmeaLine.indexOf('*'));
 

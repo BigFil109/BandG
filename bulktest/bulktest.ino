@@ -73,18 +73,19 @@ void sendType_F(uint8_t ch)   // 6-byte zero block
 
 void setup()
 {
+      // Fastnet bus OUT (TX pin 1)
+    Serial.begin(11000, SERIAL_8E2);
     // USB debug serial
     Serial1.begin(115200);  // <-- USB Serial Monitor
     Serial1.println("Fastnet Light-Off Scanner Starting...");
 
-    // Fastnet bus OUT (TX pin 1)
-    Serial.begin(11000, SERIAL_8E2);
+  
 }
 
 void loop()
 {
-   Serial1.print("Channel 0x");
-        Serial1.print("HI");
+  // Serial1.print("Channel 0x");
+    //    Serial1.print("HI");
 
         delay(500);
     for (uint16_t ch = 0; ch <= 0xFF; ch++)
