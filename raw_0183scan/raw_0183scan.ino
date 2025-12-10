@@ -27,7 +27,7 @@ void loop() {
     while (millis() - start < 5000) { // scan this baud for 2 seconds
       if (Serial1.available()) {
         char c = Serial1.read();
-
+Serial.print(c);
         // We found an NMEA-style start byte!
         if (c == '$') {
           Serial.println("\n==============================");
