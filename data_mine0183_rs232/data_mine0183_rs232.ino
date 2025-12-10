@@ -1,4 +1,6 @@
 /**
+ * Data mine nema 0183 network with the rs3232 
+
  * Please note that both hardware and software serial suffers from inadequate buffer size
  * when dealing with fast data transmission or large amount of data to be processed.
  * If you are not getting valid NMEA statement, try to increase the serial buffer size.

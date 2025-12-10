@@ -189,6 +189,7 @@ void loop()
         fastnet_add_channel(FASTNET_CH_WATER_TEMP_C, 1, 0, 1, nmea_temp);
         fastnet_add_channel(FASTNET_CH_VMG, 8, 0, 2, nmea_vmg);
         fastnet_add_channel(FASTNET_CH_LOG_TRIM, 8, 0, 2, 0);
+        fastnet_add_channel(0x75, 8, 0, 1, );
 
         fastnet_flush();
     }

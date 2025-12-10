@@ -100,6 +100,7 @@ void fastnet_flush()
 float nmea_depth = 0;
 float nmea_awa   = 0;
 float nmea_awa_true   = 0;
+float nmea_tws = 0;
 float nmea_aws   = 0;
 float nmea_sog   = 0;
 float nmea_temp  = 0;
@@ -164,6 +165,7 @@ void processSentence(String s)
 
         if(p[2] == "T"){
            nmea_awa_true = p[3].toFloat();
+           nmea_tws = p[3].toFloat();
         }
 
 
@@ -191,7 +193,12 @@ void processSentence(String s)
     //VMG $IIVPW,5.4,N*3C
     else if (s.startsWith("$IIVPW")) {
         nmea_vmg = p[1].toFloat();
-    }
+    } 
+
+    //voltage PGBV,12.5*3C
+    else if (s.startsWith("$PGBV")) {
+        nmea_volt = p[1].toFloat();
+    } 
 
     
 }

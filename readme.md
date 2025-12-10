@@ -5,6 +5,9 @@ to fastnet protocal convertor
 bench test run on bench
 
 nano is reading nema 0183 and sending it on fast net
+
+read nmea using MAX3232 board
+
    SoftwareSerial nmeaSerial(8, 9);  // RX = 8, TX = 9 (TX normally unused)
    
    
@@ -40,9 +43,10 @@ Sent: $IIVTG,,T,,M,11.0,N,20.4,K*5F
 
 Sent: $IIXDR,U,13.1,V,MAIN*5B
 
+end B&G wiring
 
 wiring sheild -
 blue -
 brown + 
-yellow green data
+yellow green Fastnet
 
