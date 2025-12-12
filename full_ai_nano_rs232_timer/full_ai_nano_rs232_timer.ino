@@ -6,10 +6,23 @@
 AltSoftSerial altSerial;  // RX=D8, TX=D9
 
 // ---------------- FASTNET CONSTANTS ----------
+// Divisors (00, 01, 10, 11 in the top 2 bits of format byte)
 const uint8_t FASTNET_DIVISORS[] = {1, 10, 100, 1000};
+
+// FASTNET_FMT_BYTES: total bytes per channel record = 1(ch) +1(fmt)+ data bytes
+// index = format_id (lower 4 bits of the format byte)
+//  - 0: 1+1+2 = 4
+//  - 1: 1+1+2 = 4
+//  - 2: 1+1+2 = 4
+//  - 3: 1+1+3 = 5
+//  - 4: 1+1+4 = 6
+//  - 5: 1+1+2 = 4  (we now use this as "xx:xx timer" -> 2 data bytes, mm:ss BCD)
+//  - 8: 1+1+2 = 4
+//  - 11:1+1+4 = 6
+// index: 0 1 2 3 4 5 6 7 8 9 10 11 ...
 const uint8_t FASTNET_FMT_BYTES[] = {
     0,4,4,5,
-    6,0,0,0,
+    6,6,0,0,
     4,0,0,6,
     0,0,0,0
 };
@@ -19,11 +32,10 @@ const uint8_t FASTNET_FMT_BYTES[] = {
 #define FASTNET_CH_VOLTAGE           0x8D
 #define FASTNET_CH_DEPTH             0xC4
 #define FASTNET_CH_SPEED_KNOTS       0x41
-#define FASTNET_CH_SPEED_KNOTS_TRIG  0x75
 #define FASTNET_CH_WATER_TEMP_C      0x20
 #define FASTNET_CH_VMG               0x7F
 #define FASTNET_CH_LOG_TRIM          0xCF
-#define FASTNET_CH_TIMER             0x75
+#define FASTNET_CH_TIMER             0x75   // Timer channel
 
 uint8_t fastnet_header[5] = {0xFF, 0x75, 0x14, 0x01, 0x77};
 uint8_t fastnet_buf[81];
@@ -54,10 +66,11 @@ uint8_t fastnet_crc(const uint8_t *data, uint8_t size, uint8_t init = 0)
     return (0x100 - (crc & 0xFF)) & 0xFF;
 }
 
-// -------------- FASTNET PACKER -------------
+// -------------- FASTNET PACKER (numeric) -------------
 void fastnet_add_channel(uint8_t ch, uint8_t fmt, uint8_t size, uint8_t divisor, float value)
 {
     uint8_t need = FASTNET_FMT_BYTES[fmt];
+    if (need == 0) return;  // unsupported format id
     if (fastnet_buf_size + need >= sizeof(fastnet_buf)) return;
 
     uint8_t *p = &fastnet_buf[fastnet_buf_size];
@@ -67,13 +80,66 @@ void fastnet_add_channel(uint8_t ch, uint8_t fmt, uint8_t size, uint8_t divisor,
     int32_t val = (int32_t)round(value * FASTNET_DIVISORS[divisor]);
 
     if (fmt == 1 && val < 0)
-        val += 0x10000;
+        val += 0x10000;  // 16-bit two's complement
 
+    // For these numeric formats we only use the low 16 bits
     p[2] = (val>>8)&0xFF;
     p[3] = val & 0xFF;
 
     fastnet_buf_size += need;
 }
+
+// ----------- TIMER CHANNEL PACKER (mm:ss, BCD, formatter 0101) -----------
+void fastnet_add_channel_timer_hhmmss(uint8_t ch,
+                                      uint8_t hours,
+                                      uint8_t minutes,
+                                      uint8_t seconds)
+{
+    uint8_t fmt_id = 5;                  // timer format
+    uint8_t need   = FASTNET_FMT_BYTES[fmt_id];
+
+    if (need == 0) return;
+    if (fastnet_buf_size + need >= sizeof(fastnet_buf)) return;
+
+    uint8_t *p = &fastnet_buf[fastnet_buf_size];
+
+    p[0] = ch;
+
+    // Format byte: ZZ YY XXXX
+    // For now: ZZ=00 (no divisor), YY=00 (4 digits), XXXX=0101 (timer)
+    p[1] = 0x05;
+
+    // Data bytes as per pyfastnet:
+    //   d0: "useless" (can be 0)
+    //   d1: hours (may exceed 24)
+    //   d2: minutes
+    //   d3: seconds
+    p[2] = 0;          // useless
+    p[3] = hours;
+    p[4] = minutes;
+    p[5] = seconds;
+
+    fastnet_buf_size += need;
+}
+
+
+void fastnet_send_timer_hhmmss(uint8_t hours,
+                               uint8_t minutes,
+                               uint8_t seconds)
+{
+    // clamp to sensible ranges for now
+    if (minutes > 59) minutes = 59;
+    if (seconds > 59) seconds = 59;
+    // hours: pyfastnet says "may exceed 24", so we’ll leave it as-is
+
+    fastnet_add_channel_timer_hhmmss(FASTNET_CH_TIMER, hours, minutes, seconds);
+}
+
+
+
+// Public API: send timer value in seconds (converted to mm:ss)
+// NOTE: this sends absolute minutes/seconds; sign/negative not encoded.
+
 
 // ---------------- SEND PACKET --------------
 void fastnet_flush()
@@ -139,6 +205,19 @@ void process_sentence(char *s)
 }
 
 
+void test_timer_seconds()
+{
+    static uint8_t s = 0;
+    fastnet_send_timer_hhmmss( s, s, 3); 
+    //fastnet_send_timer_mmss(s , s);
+   
+
+    
+    s++;
+    if (s >= 120) s = 0;
+}
+
+
 // --------------------- SETUP ----------------
 void setup()
 {
@@ -149,14 +228,15 @@ void setup()
     wdt_disable();
     delay(100);
     wdt_enable(WDTO_4S); 
-}
 
+
+}
 
 // --------------------- LOOP -----------------
 unsigned long lastSend = 0;
 void loop()
 {
-   wdt_reset();
+    wdt_reset();
 
     while (altSerial.available())
     {
@@ -178,20 +258,23 @@ void loop()
         wdt_reset();   
     }
 
-    if (millis() - lastSend >= 200) {
+    if (millis() - lastSend >= 750) {
         lastSend = millis();
 
-        fastnet_add_channel(FASTNET_CH_VOLTAGE, 8, 0, 1, nmea_volt);
-        fastnet_add_channel(FASTNET_CH_AWA,     8, 0, 0, nmea_awa);
-        fastnet_add_channel(FASTNET_CH_AWS,     1, 0, 1, nmea_aws);
-        fastnet_add_channel(FASTNET_CH_DEPTH,   1, 0, 1, nmea_depth);
-        fastnet_add_channel(FASTNET_CH_SPEED_KNOTS, 8, 0, 1, nmea_sog);
-        fastnet_add_channel(FASTNET_CH_SPEED_KNOTS_TRIG, 8, 0, 1, 0);
-        fastnet_add_channel(FASTNET_CH_WATER_TEMP_C, 1, 0, 1, nmea_temp);
-        fastnet_add_channel(FASTNET_CH_VMG, 8, 0, 2, nmea_vmg);
-        fastnet_add_channel(FASTNET_CH_LOG_TRIM, 8, 0, 2, 0);
-        //fastnet_add_channel(0x75, 8, 0, 1, 1000055 );
+        fastnet_add_channel(FASTNET_CH_VOLTAGE,        8, 0, 1, nmea_volt);
+        fastnet_add_channel(FASTNET_CH_AWA,            8, 0, 0, nmea_awa);
+        fastnet_add_channel(FASTNET_CH_AWS,            1, 0, 1, nmea_aws);
+        fastnet_add_channel(FASTNET_CH_DEPTH,          1, 0, 1, nmea_depth);
+        fastnet_add_channel(FASTNET_CH_SPEED_KNOTS,    8, 0, 1, nmea_sog);
+        fastnet_add_channel(FASTNET_CH_WATER_TEMP_C,   1, 0, 1, nmea_temp);
+        fastnet_add_channel(FASTNET_CH_VMG,            8, 0, 2, nmea_vmg);
+        fastnet_add_channel(FASTNET_CH_LOG_TRIM,       8, 0, 2, 0);
 
+        // TEST: 6 minutes = 360 seconds -> should display 06:00
+      //  fastnet_send_timer_seconds(420);
+        //fastnet_send_timer_hack(5, 59);
+        //fastnet_send_timer_mmss(30, 30);
+test_timer_seconds();
         fastnet_flush();
     }
 }
