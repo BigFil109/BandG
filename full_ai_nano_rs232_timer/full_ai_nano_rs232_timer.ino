@@ -52,6 +52,9 @@ float nmea_temp  = 0;
 float nmea_volt  = 0;
 float nmea_vmg   = 0;
 
+int hour = 0;
+int minute = 0;
+
 // ---------------- NMEA BUFFER --------------
 #define NMEA_MAX 82
 char nmea_buf[NMEA_MAX];
@@ -90,10 +93,7 @@ void fastnet_add_channel(uint8_t ch, uint8_t fmt, uint8_t size, uint8_t divisor,
 }
 
 // ----------- TIMER CHANNEL PACKER (mm:ss, BCD, formatter 0101) -----------
-void fastnet_add_channel_timer_hhmmss(uint8_t ch,
-                                      uint8_t hours,
-                                      uint8_t minutes,
-                                      uint8_t seconds)
+void fastnet_add_channel_timer_hhmm(uint8_t ch)
 {
     uint8_t fmt_id = 5;                  // timer format
     uint8_t need   = FASTNET_FMT_BYTES[fmt_id];
@@ -113,28 +113,15 @@ void fastnet_add_channel_timer_hhmmss(uint8_t ch,
     //   d0: "useless" (can be 0)
     //   d1: hours (may exceed 24)
     //   d2: minutes
-    //   d3: seconds
-    p[2] = 0;          // useless
-    p[3] = hours;
-    p[4] = minutes;
-    p[5] = seconds;
+    p[2] = minute;          // useless
+    p[3] = hour;
+    p[4] = 0;//alarm
+     p[5] = 0;
+      p[6] = 0;
+  
 
     fastnet_buf_size += need;
 }
-
-
-void fastnet_send_timer_hhmmss(uint8_t hours,
-                               uint8_t minutes,
-                               uint8_t seconds)
-{
-    // clamp to sensible ranges for now
-    if (minutes > 59) minutes = 59;
-    if (seconds > 59) seconds = 59;
-    // hours: pyfastnet says "may exceed 24", so we’ll leave it as-is
-
-    fastnet_add_channel_timer_hhmmss(FASTNET_CH_TIMER, hours, minutes, seconds);
-}
-
 
 
 // Public API: send timer value in seconds (converted to mm:ss)
@@ -175,17 +162,25 @@ void process_sentence(char *s)
     // ---- MWV ----
     if (!strcmp(p[0], "IIMWV"))
     {
-        if (p[2][0]=='L' || p[2][0]=='R')
-        {
-            nmea_awa = atof(p[1]);
-            if (p[2][0]=='L') nmea_awa = -nmea_awa;
-            nmea_aws = atof(p[3]);
-        }
-        if (p[2][0]=='T')
-        {
-            nmea_awa_true = atof(p[1]);
-            nmea_tws      = atof(p[3]);
-        }
+            if (p[2][0]=='R')
+            {
+                
+                nmea_awa = atof(p[1]);
+                if (nmea_awa > 180) nmea_awa = nmea_awa - 360; // fastnet runs from -180 to +180
+               
+               // Test send degres to app wind
+               // nmea_aws = nmea_awa/10;
+               //if(nmea_aws<0) nmea_aws =  nmea_aws * -1; 
+               nmea_aws = atof(p[3]);//real
+              
+            }
+            if (p[2][0]=='T')
+            {
+                nmea_awa_true = atof(p[1]);
+                if (nmea_awa_true >= 180) nmea_awa_true = nmea_awa_true - 360;
+                nmea_tws = atof(p[3]);
+            }
+        
     }
 
     else if (!strcmp(p[0],"IIMTW"))
@@ -202,21 +197,19 @@ void process_sentence(char *s)
 
     else if (!strcmp(p[0],"PGBV"))
         nmea_volt = atof(p[1]);
+
+     else if (!strcmp(p[0], "IIRMC")) {
+
+        String t = p[1];
+
+        if (t.length() >= 4 && isDigit(t[0]) && isDigit(t[1]) &&
+                                isDigit(t[2]) && isDigit(t[3])) {
+
+            hour   = t.substring(0, 2).toInt();
+            minute = t.substring(2, 4).toInt();
+        }
+    }
 }
-
-
-void test_timer_seconds()
-{
-    static uint8_t s = 0;
-    fastnet_send_timer_hhmmss( s, s, 3); 
-    //fastnet_send_timer_mmss(s , s);
-   
-
-    
-    s++;
-    if (s >= 120) s = 0;
-}
-
 
 // --------------------- SETUP ----------------
 void setup()
@@ -270,11 +263,8 @@ void loop()
         fastnet_add_channel(FASTNET_CH_VMG,            8, 0, 2, nmea_vmg);
         fastnet_add_channel(FASTNET_CH_LOG_TRIM,       8, 0, 2, 0);
 
-        // TEST: 6 minutes = 360 seconds -> should display 06:00
-      //  fastnet_send_timer_seconds(420);
-        //fastnet_send_timer_hack(5, 59);
-        //fastnet_send_timer_mmss(30, 30);
-test_timer_seconds();
+        fastnet_add_channel_timer_hhmm(FASTNET_CH_TIMER);
+
         fastnet_flush();
     }
 }
