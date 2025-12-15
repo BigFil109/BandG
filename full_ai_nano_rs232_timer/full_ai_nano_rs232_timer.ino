@@ -116,8 +116,8 @@ void fastnet_add_channel_timer_hhmm(uint8_t ch)
     p[2] = minute;          // useless
     p[3] = hour;
     p[4] = 0;//alarm
-     p[5] = 0;
-      p[6] = 0;
+    p[5] = 0;
+    p[6] = 0;
   
 
     fastnet_buf_size += need;
