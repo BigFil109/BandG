@@ -29,13 +29,18 @@ const uint8_t FASTNET_FMT_BYTES[] = {
 
 #define FASTNET_CH_AWS               0x50
 #define FASTNET_CH_AWA               0x51
-#define FASTNET_CH_VOLTAGE           0x8D
+#define FASTNET_CH_VOLTAGE           0x8D // no nema feed atm
 #define FASTNET_CH_DEPTH             0xC4
 #define FASTNET_CH_SPEED_KNOTS       0x41
 #define FASTNET_CH_WATER_TEMP_C      0x20
 #define FASTNET_CH_VMG               0x7F
 #define FASTNET_CH_LOG_TRIM          0xCF
 #define FASTNET_CH_TIMER             0x75   // Timer channel
+#define FASTNET_CH_TRUE_WIND_SPEED   0x57
+
+//#define FASTNET_CH_TRUE_WIND_ANGLE   0x59
+
+
 
 uint8_t fastnet_header[5] = {0xFF, 0x75, 0x14, 0x01, 0x77};
 uint8_t fastnet_buf[81];
@@ -44,7 +49,7 @@ uint8_t fastnet_buf_size = 0;
 // ---------------- NMEA VALUES --------------
 float nmea_depth = 0;
 float nmea_awa   = 0;
-float nmea_awa_true = 0;
+float nmea_twa   = 0;
 float nmea_tws   = 0;
 float nmea_aws   = 0;
 float nmea_sog   = 0;
@@ -115,9 +120,9 @@ void fastnet_add_channel_timer_hhmm(uint8_t ch)
     //   d2: minutes
     p[2] = minute;          // useless
     p[3] = hour;
-    p[4] = 0;//alarm
-    p[5] = 0;
-    p[6] = 0;
+   // p[4] = -1;//alarm
+   // p[5] = -1;
+   // p[6] = -1;
   
 
     fastnet_buf_size += need;
@@ -176,8 +181,8 @@ void process_sentence(char *s)
             }
             if (p[2][0]=='T')
             {
-                nmea_awa_true = atof(p[1]);
-                if (nmea_awa_true >= 180) nmea_awa_true = nmea_awa_true - 360;
+                nmea_twa = atof(p[1]);
+                if (nmea_twa >= 180) nmea_twa = nmea_twa - 360;
                 nmea_tws = atof(p[3]);
             }
         
@@ -261,9 +266,13 @@ void loop()
         fastnet_add_channel(FASTNET_CH_SPEED_KNOTS,    8, 0, 1, nmea_sog);
         fastnet_add_channel(FASTNET_CH_WATER_TEMP_C,   1, 0, 1, nmea_temp);
         fastnet_add_channel(FASTNET_CH_VMG,            8, 0, 2, nmea_vmg);
-        fastnet_add_channel(FASTNET_CH_LOG_TRIM,       8, 0, 2, 0);
-
         fastnet_add_channel_timer_hhmm(FASTNET_CH_TIMER);
+
+      //  fastnet_add_channel(FASTNET_CH_TRUE_WIND_ANGLE,       8, 0, 2, nmea_twa);
+      //  fastnet_add_channel(FASTNET_CH_TRUE_WIND_SPEED,       8, 0, 2, nmea_tws);
+
+
+     
 
         fastnet_flush();
     }
