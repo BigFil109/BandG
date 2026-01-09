@@ -75,12 +75,14 @@ class Fastnet {
     uint8_t depth(uint16_t depth);
     uint8_t boat_speed(uint16_t speed);
     uint8_t vmg(uint16_t vmg);
-    uint8_t heading(uint16_t vmg);
     uint8_t app_wind(int16_t angle, uint16_t speed);
     uint8_t true_wind(int16_t angle, uint16_t speed);
     uint8_t backlight(uint8_t level);
     uint8_t timer(uint16_t seconds);
     uint8_t startup();
+    uint8_t shutdown();
+    uint8_t powerup();
+    uint8_t test(uint8_t value);
     uint8_t who();
     uint8_t new_text();
     uint8_t ask(uint8_t meter);
@@ -97,8 +99,11 @@ class Fastnet {
     void set_device(uint8_t device);
     uint8_t get_page();
     void set_page(uint8_t page);
+    void read_on();
+    void read_off();
 
   private:
     uint8_t write();
+    uint8_t write_q();
     uint8_t get_formatter(format f, divisor d, width w);
 };

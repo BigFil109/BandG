@@ -19,6 +19,8 @@
 #include <Arduino.h>
 #include "fastnet.h"
 
+
+
 Fastnet::Fastnet(uint8_t addr) {
   _addr = addr;
   _seq = 0;
@@ -27,6 +29,8 @@ Fastnet::Fastnet(uint8_t addr) {
   _device = 0x40;
   IO.begin(28800, SERIAL_8O2);
 }
+
+
 
 void Fastnet::register_device(uint8_t id) {
   if(id >= 0x40 && id <= 0x4f) {
@@ -63,23 +67,23 @@ uint8_t Fastnet::depth(uint16_t depth) {
   _buf[2] = 0x08;
   _buf[3] = CM_SEND_DATA;
   _buf[4] = checksum(_buf, 4);
-  _buf[5] = CH_DEPTH_M;
+  _buf[5] = CH_DEPTH_FT;
   _buf[6] = 0x81; // 2 decimal, 4 digits, number
   _buf[7] = depth >> 8;
   _buf[8] = depth & 0xff;
-  _buf[9] = CH_DEPTH_FM;
+  _buf[9] = CH_DEPTH_M;
   _buf[10] = 0x81;
   _buf[11] = depth_m >> 8;
   _buf[12] = depth_m & 0xff;
   _buf[13] = checksum(_buf + 5, 8);
   _len = 14;
 
-  return write();
+  return write_q();
 }
 
 uint8_t Fastnet::boat_speed(uint16_t speed) {
   _buf[0] = BROADCAST;
-  _buf[1] = WIND_CPU;
+  _buf[1] = DEPTH_CPU;
   _buf[2] = 0x04;
   _buf[3] = CM_SEND_DATA;
   _buf[4] = checksum(_buf, 4);
@@ -90,7 +94,7 @@ uint8_t Fastnet::boat_speed(uint16_t speed) {
   _buf[9] = checksum(_buf + 5, 4);
   _len = 10;
 
-  return write();
+  return write_q();
 }
 
 uint8_t Fastnet::vmg(uint16_t vmg) {
@@ -106,23 +110,7 @@ uint8_t Fastnet::vmg(uint16_t vmg) {
   _buf[9] = checksum(_buf + 5, 4);
   _len = 10;
 
-  return write();
-}
-
-uint8_t Fastnet::heading(uint16_t heading) {
-  _buf[0] = BROADCAST;
-  _buf[1] = WIND_CPU;
-  _buf[2] = 0x8;
-  _buf[3] = CM_SEND_DATA;
-  _buf[4] = checksum(_buf, 4);
-  _buf[5] = CH_HEADING;
-  _buf[6] = 0x81;
-  _buf[7] = heading >> 8;
-  _buf[8] = heading & 0xff;
-  _buf[9] = checksum(_buf + 5, 4);
-  _len = 10;
-
-  return write();
+  return write_q();
 }
 
 uint8_t Fastnet::app_wind(int16_t angle, uint16_t speed) {
@@ -149,7 +137,7 @@ uint8_t Fastnet::app_wind(int16_t angle, uint16_t speed) {
   _buf[13] = checksum(_buf + 5, 8);
   _len = 14;
 
-  return write();
+  return write_q();
 }
 
 uint8_t Fastnet::true_wind(int16_t angle, uint16_t speed) {
@@ -176,7 +164,7 @@ uint8_t Fastnet::true_wind(int16_t angle, uint16_t speed) {
   _buf[13] = checksum(_buf + 5, 8);
   _len = 14;
 
-  return write();
+  return write_q();
 }
 
 uint8_t Fastnet::timer(uint16_t seconds) {
@@ -243,7 +231,7 @@ uint8_t Fastnet::command(const uint8_t * data, uint8_t len) {
 
 uint8_t Fastnet::backlight(uint8_t level) {
   _buf[0] = BROADCAST;
-  _buf[1] = _addr;
+  _buf[1] = 0x2F;
   _buf[2] = 0x02;
   _buf[3] = CM_SET_BACKLIGHT;
   _buf[4] = checksum(_buf, 4);
@@ -260,6 +248,40 @@ uint8_t Fastnet::startup() {
   _buf[1] = _addr;
   _buf[2] = 0x00;
   _buf[3] = CM_STARTUP;
+  _buf[4] = checksum(_buf, 4);
+  _len = 5;
+
+  return write();
+}
+
+uint8_t Fastnet::shutdown() {
+  _buf[0] = BROADCAST;
+  _buf[1] = _addr;
+  _buf[2] = 0x00;
+  _buf[3] = CM_POWER_OFF;
+  _buf[4] = checksum(_buf, 4);
+  _len = 5;
+
+  return write();
+}
+
+uint8_t Fastnet::powerup() {
+  _buf[0] = BROADCAST;
+  _buf[1] = 0X20;
+  _buf[2] = 0x00;
+  _buf[3] = 0XFF;
+  _buf[4] = checksum(_buf, 4);
+  _len = 5;
+
+  return write();
+}
+
+
+uint8_t Fastnet::test(uint8_t value) {
+  _buf[0] = BROADCAST;
+  _buf[1] = _addr;
+  _buf[2] = 0x00;
+  _buf[3] = value;
   _buf[4] = checksum(_buf, 4);
   _len = 5;
 
@@ -331,7 +353,7 @@ uint8_t Fastnet::config_page(uint16_t channel, uint8_t node, char * label, char 
   if(channel > 0xff) {
     _buf[i] = channel >> 8;
     _buf[i+1] = channel & 0xff;
-    _buf[i+2] = _addr;
+    _buf[i+2] = node;
     _len = 21;
     i += 3;
   } else {
@@ -390,7 +412,8 @@ void Fastnet::resume() {
 }
 
 uint8_t Fastnet::write() {
-  digitalWrite(ENABLE, HIGH);
+  
+   
   Serial.print("TX: ");
   for(int i = 0; i < _len; i++) {
     Serial.print(_buf[i], HEX);
@@ -398,13 +421,24 @@ uint8_t Fastnet::write() {
   }
   Serial.println();
 
-  //Serial.print(".");
-
   if(!_pause) {
     IO.write(_buf, _len);
     _seq++;
     return _len;
   }
-  delay(10); 
+
+  return _len;
+}
+
+uint8_t Fastnet::write_q() {
+
+  
+ 
+  if(!_pause) {
+    IO.write(_buf, _len);
+    _seq++;
+    return _len;
+  }
+
   return _len;
 }

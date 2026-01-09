@@ -79,7 +79,7 @@ uint8_t Fastnet::depth(uint16_t depth) {
 
 uint8_t Fastnet::boat_speed(uint16_t speed) {
   _buf[0] = BROADCAST;
-  _buf[1] = WIND_CPU;
+  _buf[1] = DEPTH_CPU;
   _buf[2] = 0x04;
   _buf[3] = CM_SEND_DATA;
   _buf[4] = checksum(_buf, 4);
@@ -331,7 +331,7 @@ uint8_t Fastnet::config_page(uint16_t channel, uint8_t node, char * label, char 
   if(channel > 0xff) {
     _buf[i] = channel >> 8;
     _buf[i+1] = channel & 0xff;
-    _buf[i+2] = _addr;
+    _buf[i+2] = node;
     _len = 21;
     i += 3;
   } else {
