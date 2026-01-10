@@ -29,7 +29,7 @@ Fastnet::Fastnet(uint8_t addr) {
 }
 
 void Fastnet::register_device(uint8_t id) {
-  if(id >= 0x40 && id <= 0x4f) {
+  if (id >= 0x40 && id <= 0x4f) {
     Serial.print("Registered 20/20 ");
     Serial.println(id - 0x40);
     _devices |= (1 << (id - 0x40));
@@ -63,11 +63,11 @@ uint8_t Fastnet::depth(uint16_t depth) {
   _buf[2] = 0x08;
   _buf[3] = CM_SEND_DATA;
   _buf[4] = checksum(_buf, 4);
-  _buf[5] = CH_DEPTH_M;
+  _buf[5] = CH_DEPTH_FT;
   _buf[6] = 0x81; // 2 decimal, 4 digits, number
   _buf[7] = depth >> 8;
   _buf[8] = depth & 0xff;
-  _buf[9] = CH_DEPTH_FM;
+  _buf[9] = CH_DEPTH_M;
   _buf[10] = 0x81;
   _buf[11] = depth_m >> 8;
   _buf[12] = depth_m & 0xff;
@@ -79,7 +79,7 @@ uint8_t Fastnet::depth(uint16_t depth) {
 
 uint8_t Fastnet::boat_speed(uint16_t speed) {
   _buf[0] = BROADCAST;
-  _buf[1] = WIND_CPU;
+  _buf[1] = DEPTH_CPU;
   _buf[2] = 0x04;
   _buf[3] = CM_SEND_DATA;
   _buf[4] = checksum(_buf, 4);
@@ -92,6 +92,7 @@ uint8_t Fastnet::boat_speed(uint16_t speed) {
 
   return write();
 }
+
 
 uint8_t Fastnet::vmg(uint16_t vmg) {
   _buf[0] = BROADCAST;
@@ -132,7 +133,7 @@ uint8_t Fastnet::app_wind(int16_t angle, uint16_t speed) {
     angle /= 10;
     waf = 0x31;
   }
-  
+
   _buf[0] = BROADCAST;
   _buf[1] = WIND_CPU;
   _buf[2] = 0x08;
@@ -144,7 +145,7 @@ uint8_t Fastnet::app_wind(int16_t angle, uint16_t speed) {
   _buf[8] = speed & 0xff;
   _buf[9] = CH_APP_WA;
   _buf[10] = waf;
-  _buf[11]= angle >> 8;
+  _buf[11] = angle >> 8;
   _buf[12] = angle & 0xff;
   _buf[13] = checksum(_buf + 5, 8);
   _len = 14;
@@ -159,7 +160,7 @@ uint8_t Fastnet::true_wind(int16_t angle, uint16_t speed) {
     angle /= 10;
     waf = 0x31;
   }
-  
+
   _buf[0] = BROADCAST;
   _buf[1] = WIND_CPU;
   _buf[2] = 0x08;
@@ -171,7 +172,7 @@ uint8_t Fastnet::true_wind(int16_t angle, uint16_t speed) {
   _buf[8] = speed & 0xff;
   _buf[9] = CH_TRUE_WA;
   _buf[10] = waf;
-  _buf[11]= angle >> 8;
+  _buf[11] = angle >> 8;
   _buf[12] = angle & 0xff;
   _buf[13] = checksum(_buf + 5, 8);
   _len = 14;
@@ -179,28 +180,100 @@ uint8_t Fastnet::true_wind(int16_t angle, uint16_t speed) {
   return write();
 }
 
+//ff 05 0c 01 |ef| 75 05 01 00 10 20 77 05 01 00 03 1D B8
 uint8_t Fastnet::timer(uint16_t seconds) {
   uint8_t m = seconds / 60;
   uint8_t s = seconds % 60;
 
   _buf[0] = BROADCAST;
   _buf[1] = WIND_CPU;
-  _buf[2] = 0x08;
+  _buf[2] = 0x0C;//Format Time
   _buf[3] = CM_SEND_DATA;
   _buf[4] = checksum(_buf, 4);
   _buf[5] = CH_TIMER;
-  _buf[6] = 0x00;
-  _buf[7] = m;
-  _buf[8] = s;
-  _buf[9] = checksum(_buf + 5, 8);
-  _len = 10;
+  _buf[6] = 0x05;
+  _buf[7] = 0x01;//FR, 2 = 00:00
+  _buf[8] = 0x00;
+  _buf[9] = m;//mins
+  _buf[10] = s; //sec
+  _buf[11] = 0x77;
+  _buf[12] = 0x05;
+  _buf[13] = 0x01;
+  _buf[14] = 0x00;
+  _buf[15] = 0x03;
+  _buf[16] = 0x1D;
+  _buf[17] =  checksum(_buf + 5, 12);
+  _len = 18;
 
   return write();
 }
 
+
+/*uint8_t Fastnet::bearingToMark(uint16_t bearing) {
+ 
+
+  _buf[0] = BROADCAST;
+  _buf[1] = WIND_CPU;
+  _buf[2] = 0x06;
+  _buf[3] = CM_SEND_DATA;
+  _buf[4] = checksum(_buf, 4);
+  _buf[5] = CH_HEADING_RAW;
+  _buf[6] = 0x0A;
+  _buf[7] = 0x00;
+  _buf[8] = 0x00;
+  _buf[9] = 0x00;
+  _buf[10] = 0x00;
+  _buf[11] = checksum(_buf + 5, 6);
+  _len = 12;
+
+  return write();
+}*/
+
+//ff 05 14 01 |e7| 4A 0A 00 00 00 00 82 47 00 D8 00 00 69 08 CC 00 9A 08 CC 00 60 
+//FF  5 14  1  E7  4A  A  0  0  0  0 82 47  0 D8  0  0 69  8 CC  0 9A  8 CC  0 60  
+//ff 05 07 fc |f9| 05 87 00 40 86 08 40 66 
+uint8_t Fastnet::bearingToMark(uint16_t bearing) {
+ 
+
+  _buf[0] = BROADCAST;
+  _buf[1] = WIND_CPU;
+  _buf[2] = 0x07;
+  _buf[3] = 0xFC;
+  _buf[4] = checksum(_buf, 4);
+  _buf[5] = 0x05;
+  _buf[6] = 0x87;
+  _buf[7] = 0x00;
+  _buf[8] = 0x40;
+  _buf[9] = 0x86;
+  _buf[10] = 0x08;
+
+
+//82 47 00 D8 00 00 69 08 CC 00 9A 08 CC 00 60 
+_buf[11] =0x40;
+/*
+_buf[12] = 0x86;
+_buf[13] = 0x00;
+/*_buf[14] = 0xD8;
+_buf[15] = 0x00;
+_buf[16] = 0x00;
+_buf[17] = 0x69;
+_buf[18] = 0x08;
+_buf[19] = 0xCC;
+_buf[20] = 0x00;
+_buf[21] = 0x9A;
+_buf[22] = 0x08;
+_buf[23] = 0xCC;
+_buf[25] = 0x00;*/
+
+
+  _buf[12] = checksum(_buf + 5, 7);
+  _len = 13;
+
+  return write();
+}
 // Write data to channel Linear 1 without any formatting
 // Learn how the display formatting bytes work
-uint8_t Fastnet::raw(const uint8_t * data, uint8_t len) {
+uint8_t Fastnet::raw(const uint8_t *data, uint8_t len) {
   _buf[0] = BROADCAST;
   _buf[1] = WIND_CPU;
   _buf[2] = len;
@@ -208,7 +281,7 @@ uint8_t Fastnet::raw(const uint8_t * data, uint8_t len) {
   _buf[4] = checksum(_buf, 4);
   _len = 5;
 
-  if(len) {
+  if (len) {
     _buf[2] = len + 1;
     _buf[4] = checksum(_buf, 4);
     _buf[5] = CH_LINEAR_1;
@@ -223,7 +296,7 @@ uint8_t Fastnet::raw(const uint8_t * data, uint8_t len) {
 // Send received data as an arbitrary command.
 // First byte is the command to send, remaining bytes are
 // the command payload.
-uint8_t Fastnet::command(const uint8_t * data, uint8_t len) {
+uint8_t Fastnet::command(const uint8_t *data, uint8_t len) {
   len--;
   _buf[0] = BROADCAST;
   _buf[1] = _addr;
@@ -232,7 +305,7 @@ uint8_t Fastnet::command(const uint8_t * data, uint8_t len) {
   _buf[4] = checksum(_buf, 4);
   _len = 5;
 
-  if(len) {
+  if (len) {
     memcpy(_buf + 5, data + 1, len);
     _buf[5 + len] = checksum(_buf + 5, len);
     _len = len + 6;
@@ -316,7 +389,7 @@ uint8_t Fastnet::change_page(uint8_t dir) {
   return write();
 }
 
-uint8_t Fastnet::config_page(uint16_t channel, uint8_t node, char * label, char * units) {
+uint8_t Fastnet::config_page(uint16_t channel, uint8_t node, char *label, char *units) {
   _buf[0] = _device;
   _buf[1] = _addr;
   _buf[2] = 0x0E;
@@ -328,20 +401,20 @@ uint8_t Fastnet::config_page(uint16_t channel, uint8_t node, char * label, char 
 
   int i = 7;
 
-  if(channel > 0xff) {
+  if (channel > 0xff) {
     _buf[i] = channel >> 8;
-    _buf[i+1] = channel & 0xff;
-    _buf[i+2] = _addr;
+    _buf[i + 1] = channel & 0xff;
+    _buf[i + 2] = _addr;
     _len = 21;
     i += 3;
   } else {
     _buf[i] = channel;
-    _buf[i+1] = node;
+    _buf[i + 1] = node;
     _len = 20;
     i += 2;
   }
 
-  if(units) {
+  if (units) {
     memcpy(_buf + i, label, 8);
     memcpy(_buf + i + 8, units, 2);
   } else {
@@ -375,7 +448,7 @@ uint8_t Fastnet::store_page() {
 
 uint8_t Fastnet::checksum(uint8_t *data, uint8_t len) {
   uint8_t sum = 0;
-  for(uint8_t i = 0; i < len; i++)
+  for (uint8_t i = 0; i < len; i++)
     sum += data[i];
 
   return ~sum + 1;
@@ -392,7 +465,7 @@ void Fastnet::resume() {
 uint8_t Fastnet::write() {
   digitalWrite(ENABLE, HIGH);
   Serial.print("TX: ");
-  for(int i = 0; i < _len; i++) {
+  for (int i = 0; i < _len; i++) {
     Serial.print(_buf[i], HEX);
     Serial.print(' ');
   }
@@ -400,11 +473,11 @@ uint8_t Fastnet::write() {
 
   //Serial.print(".");
 
-  if(!_pause) {
+  if (!_pause) {
     IO.write(_buf, _len);
     _seq++;
     return _len;
   }
-  delay(10); 
+  delay(10);
   return _len;
 }

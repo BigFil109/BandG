@@ -80,6 +80,7 @@ class Fastnet {
     uint8_t true_wind(int16_t angle, uint16_t speed);
     uint8_t backlight(uint8_t level);
     uint8_t timer(uint16_t seconds);
+    uint8_t bearingToMark(uint16_t bearing);
     uint8_t startup();
     uint8_t who();
     uint8_t new_text();

@@ -40,7 +40,7 @@ uint32_t data_timer = 0;
 uint32_t light_timer = 0;
 
 const uint32_t WHO_INTERVAL_MS = 2000;
-const uint32_t PAGE_INTERVAL_MS = 4000;
+const uint32_t PAGE_INTERVAL_MS = 8000;
 const uint32_t DATA_INTERVAL_MS = 200;
 const uint32_t LIGHT_INTERVAL_MS = 5000;
 
@@ -141,78 +141,87 @@ void fastnet_rx_poll() {
 // Simulated data
 uint16_t boat_spd = 62;  // 6.2 kts
 uint16_t depth = 134;    // 13.4 m
-uint16_t vmg = 6;       // 2.8 kts
+uint16_t vmg = 6;        // 2.8 kts
 int16_t awa = 32;        // deg
 uint16_t aws = 145;      // 14.5 kts
 int16_t twa = -179;      // deg
 uint16_t tws = 100;      // 17.8 kts
-
+uint16_t time = 10;
+int16_t bearingToMark = -180;
+uint16_t DELAY = 10;
 
 void send_broadcast_data() {
   static uint16_t t = 0;
- Serial.print("BoatSpeed:");
+  Serial.print("BoatSpeed:");
   fastnet.boat_speed(boat_spd);
   boat_spd += 111;
   if (boat_spd > 5000) { boat_spd = 0; }
-delay(100);
-Serial.print("VMG:");
-  fastnet.vmg(vmg);
+  delay(DELAY);
 
-  vmg -= 111;
-  if (vmg <= 0) { vmg = 5000; }
 
-/*
-  vmg += 111;
-  if (vmg > 50000) { vmg = 0; }
+  Serial.print("TIMER SEC:");
+  Serial.print(time);
+  Serial.print(":");
+  fastnet.timer(time);
+  time += 1;
+  if (time >= 5000) { time = 0; }
+  delay(DELAY);
 
-  twa += 1;
-  if (twa > 179) { twa = -180; }
+  Serial.print("BEARING TO MARK:");
+  Serial.print(bearingToMark);
+  Serial.print(":");
+  fastnet.true_wind(bearingToMark *10,0x22);
+  bearingToMark =  bearingToMark + 1;
+  if (bearingToMark >= 180) { bearingToMark = -180; }
+  delay(DELAY);
 
-  tws += 111;
-  if (tws > 50000) { tws = 0; }
-
+  Serial.print("DEPTH:");
+  Serial.print(depth);
+  Serial.print(":");
   fastnet.depth(depth);
-  delay(10);
-  fastnet.vmg(vmg);
-  delay(10);
-  fastnet.app_wind(awa, aws);
-  delay(10);
-  fastnet.true_wind(twa, tws);
-  delay(10);
-  fastnet.heading(330);
-  delay(10);
-
+  depth =  depth + 3;
+  if (depth >= 180) { depth = 0; }
+  delay(DELAY);
+ 
   // Optional timer (some pages expect this)
-  fastnet.timer((t++ / 10) % 600);
-  */
-}
-
-
-void openVMGPage() {
-   fastnet.config_page(
-    CH_VMG,
-    WIND_CPU,
-    "DEPTH   ",
-    " M");
-  fastnet.store_page();
+ // fastnet.timer((t++ / 10) % 600);
+  
 }
 
 void openBSpeedPage() {
   fastnet.config_page(
     CH_BOAT_SPD_KT,
-    WIND_CPU,
+    DEPTH_CPU,
     "BOAT SPD",
     "KT");
   fastnet.store_page();
 }
 
-
 void openBearingToMarkPage() {
   fastnet.config_page(
-    CH_BOAT_SPD_KT,
+    CH_TRUE_WA,
     WIND_CPU,
     "MARK BRG",
-    " %");
+    "%T");
+  fastnet.store_page();
+}
+
+
+void openTimerPage() {
+  fastnet.config_page(
+    CH_TIMER,
+    WIND_CPU,
+    "TIMER   ",
+    "  ");
+  fastnet.store_page();
+}
+
+void openDepthPage() {
+  fastnet.config_page(
+    CH_DEPTH_M,
+    DEPTH_CPU,
+    "DEPTH   ",
+    " M");
   fastnet.store_page();
 }
 
@@ -231,7 +240,7 @@ void setup() {
   //fix stuck page issue
   fastnet.register_device(0x42);
   fastnet.set_device(0x42);
- // fastnet.change_page(0);
+  // fastnet.change_page(0);
   delay(100);
   fastnet.store_page();
   Serial1.flush();
@@ -270,21 +279,22 @@ void loop() {
     //   Serial.println("TX: Change page (NEXT)");
     rs485_tx();
 
-    if(changePage == 0){
-      openVMGPage();
+    if (changePage == 0) {
+      openDepthPage();
       changePage = 1;
-    } else if(changePage == 1) {
+    } else if (changePage == 1) {
       openBSpeedPage();
       changePage = 2;
-    } else if(changePage == 2) {
+    } else if (changePage == 2) {
       openBearingToMarkPage();
+      changePage = 3;
+    } else if (changePage == 3) {
+      openTimerPage();
       changePage = 0;
     }
 
     page_state = PAGE_CHANGE_SENT;
     // test config reply
-    delay(100);
-    fastnet.store_page();
     delay(100);
     fastnet.store_page();
     delay(100);
@@ -296,7 +306,7 @@ void loop() {
     page_change_time = millis();
     page_timer = millis();
   }
-  
+
 
 
   // ---- Data TX (blocked during page change) ----
@@ -308,6 +318,4 @@ void loop() {
     rs485_rx();
     data_timer = millis();
   }
-
-  
 }
