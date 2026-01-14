@@ -8,6 +8,12 @@ Fastnet fastnet(0x2F);
 
 int changePage = 0;
 
+//todo add depth alarm
+//add nmea0183 input
+//button to change display or timer of bearing to mark
+//timer if timer runnign on nmea
+//optmise and memory safe final
+
 // ---------------- RX FRAME STATE ----------------
 
 uint8_t rx_buf[64];
