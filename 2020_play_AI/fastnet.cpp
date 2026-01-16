@@ -30,8 +30,6 @@ Fastnet::Fastnet(uint8_t addr) {
 
 void Fastnet::register_device(uint8_t id) {
   if (id >= 0x40 && id <= 0x4f) {
-    Serial.print("Registered 20/20 ");
-    Serial.println(id - 0x40);
     _devices |= (1 << (id - 0x40));
   }
 }
@@ -56,19 +54,19 @@ void Fastnet::set_page(uint8_t page) {
   _page = page;
 }
 
-uint8_t Fastnet::depth(uint16_t depth) {
-  uint16_t depth_m = depth / 3.281;
+uint8_t Fastnet::depth(uint16_t depth_m) {
+  uint16_t depth = depth_m * 3.281;
   _buf[0] = BROADCAST;
   _buf[1] = DEPTH_CPU;
   _buf[2] = 0x08;
   _buf[3] = CM_SEND_DATA;
   _buf[4] = checksum(_buf, 4);
   _buf[5] = CH_DEPTH_FT;
-  _buf[6] = 0x53; //
+  _buf[6] = 0x53; //81
   _buf[7] = depth >> 8;
   _buf[8] = depth & 0xff;
   _buf[9] = CH_DEPTH_M;
-  _buf[10] = 0x53;
+  _buf[10] = 0x53;//81
   _buf[11] = depth_m >> 8;
   _buf[12] = depth_m & 0xff;
   _buf[13] = checksum(_buf + 5, 8);
@@ -126,6 +124,22 @@ uint8_t Fastnet::heading(uint16_t heading) {
   return write();
 }
 
+uint8_t Fastnet::deadrecon(uint16_t heading) {
+  _buf[0] = BROADCAST;
+  _buf[1] = DEPTH_CPU;
+  _buf[2] = 0x04;
+  _buf[3] = CM_SEND_DATA;
+  _buf[4] = checksum(_buf, 4);
+  _buf[5] = CH_DR_COURSE;
+  _buf[6] = 0x08; //3 digits max 999 no neg
+  _buf[7] = heading >> 8;
+  _buf[8] = heading & 0xff;
+  _buf[9] = checksum(_buf + 5, 4);
+  _len = 10;
+
+  return write();
+}
+
 uint8_t Fastnet::app_wind(int16_t angle, uint16_t speed) {
   uint8_t waf = 0x71;
 
@@ -167,11 +181,11 @@ uint8_t Fastnet::true_wind(int16_t angle, uint16_t speed) {
   _buf[3] = CM_SEND_DATA;
   _buf[4] = checksum(_buf, 4);
   _buf[5] = CH_TRUE_WS_KT;
-  _buf[6] = 0x03;
+  _buf[6] = 0x01;
   _buf[7] = speed >> 8;
   _buf[8] = speed & 0xff;
   _buf[9] = CH_TRUE_WA;
-  _buf[10] = waf;
+  _buf[10] = 0x61;//waf;
   _buf[11] = angle >> 8;
   _buf[12] = angle & 0xff;
   _buf[13] = checksum(_buf + 5, 8);

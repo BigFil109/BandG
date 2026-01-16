@@ -29,8 +29,8 @@ inline void rs485_tx() {
 
 uint16_t sog = 0;  // 0.1 kt
 uint16_t depth_mm = 0;
-int16_t brg_mark = 0;
-char brg_mark_name[9] ="       ";
+uint16_t brg_mark = 0;
+char brg_mark_name[9] ="M   NONE ";
 bool brg_valid = true;
 
 int32_t countdown_sec = -1;
@@ -59,7 +59,7 @@ uint32_t t_nmea = 0;
 uint32_t t_data = 0;
 uint32_t t_page = 0;
 uint32_t t_brg = 0;
-uint32_t t_depth_ok = 0;
+
 
 // ================= RX =================
 
@@ -216,45 +216,28 @@ void nmea_rx() {
 // ================= DISPLAY LOGIC =================
 uint16_t c_page = 0;
 void update_mode() {
-
-
-  if (millis() - c_page > 7000) {
-    if (mode == MODE_BRG) {
-      mode = MODE_DEPTH;
-    } else if (mode == MODE_DEPTH) {
-      mode = MODE_TIMER;
-    } else if (mode == MODE_TIMER) {
-      mode = MODE_SPEED;
-    } else if (mode == MODE_SPEED) {
-      mode = MODE_BRG;
-    }
-    c_page = millis();
-  }
-
-
-  /* if (depth_mm < DEPTH_LIMIT_MM) {
+ 
+  if (depth_mm < DEPTH_LIMIT_MM) {
     mode = MODE_DEPTH;
-    t_depth_ok = millis();
-    fastnet.backlight(3);
     return;
+  }  else {
+     mode = prev_mode;
   }
-
-  if (mode == MODE_DEPTH && millis() - t_depth_ok < 10000) return;
 
   if (countdown_sec >= 0) {
     mode = MODE_TIMER;
     return;
   }
 
-  if (brg_valid && millis() - t_brg > 20000) {
+  if (brg_valid && millis() - t_brg > 20000) {//show everu 20seconds
     mode = MODE_BRG;
     t_brg = millis();
     return;
   }
 
-  if (mode == MODE_BRG && millis() - t_brg > 3000) {
+  if (mode == MODE_BRG && millis() - t_brg > 2000) {//back to sog after 2 seconds
     mode = MODE_SPEED;
-  }*/
+  }
 }
 
 // ================= PAGE =================
@@ -268,17 +251,15 @@ void set_page() {
   if (mode == MODE_TIMER)
     fastnet.config_page(CH_TIMER, WIND_CPU, "TIMER   ", "  ");
   else if (mode == MODE_BRG)
-    fastnet.config_page(CH_TRUE_WA, WIND_CPU, brg_mark_name, "%T");
+    fastnet.config_page(CH_DR_COURSE, DEPTH_CPU, brg_mark_name, "%T");
   else if (mode == MODE_DEPTH)
     fastnet.config_page(CH_DEPTH_M, DEPTH_CPU, "DEPTH   ", " M");
   else
     fastnet.config_page(CH_BOAT_SPD_KT, DEPTH_CPU, "SOG     ", "KT");
 
-
   fastnet.store_page();
   delay(10);
-  fastnet.backlight(4);
-
+ 
   Serial1.flush();
   rs485_rx();
   prev_mode = mode;
@@ -290,11 +271,11 @@ void send_data() {
   rs485_tx();
   fastnet.boat_speed(sog);
   delay(10);
-  fastnet.depth(depth_mm / 10);
+  fastnet.depth(depth_mm/100);
   delay(10);
   fastnet.timer(countdown_sec >= 0 ? countdown_sec : 0);
   delay(10);
-  fastnet.true_wind(brg_mark, 0);
+  fastnet.deadrecon(brg_mark/10);
   delay(10);
 
   Serial1.flush();
@@ -311,7 +292,19 @@ void setup() {
   Serial1.begin(FASTNET_BAUD, SERIAL_8O2);
   nmea.begin(4800);
 
+  delay(10);
+  rs485_tx();
+  fastnet.backlight(4);
+  delay(10);
+  fastnet.backlight(4);
+  delay(10);
+  fastnet.backlight(4);
+  delay(10);
+
   rs485_rx();
+
+  delay(30);
+  send_data();
 }
 
 // ================= LOOP =================
@@ -321,13 +314,10 @@ void loop() {
   fastnet_rx();
   nmea_rx();
   update_mode();
+  set_page();
 
-  if (millis() - t_page > 4000) {
-    set_page();
-    t_page = millis();
-  }
 
-  if (millis() - t_data > 200) {
+  if (millis() - t_data > 100) {
     send_data();
     t_data = millis();
   }
