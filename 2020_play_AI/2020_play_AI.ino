@@ -229,13 +229,13 @@ void update_mode() {
     return;
   }
 
-  if (brg_valid && millis() - t_brg > 20000) {//show everu 20seconds
+  if (brg_valid && millis() - t_brg > 15000) {//show everu 20 seconds
     mode = MODE_BRG;
     t_brg = millis();
     return;
   }
 
-  if (mode == MODE_BRG && millis() - t_brg > 2000) {//back to sog after 2 seconds
+  if (mode == MODE_BRG && millis() - t_brg > 1500) {//back to sog after 2 seconds
     mode = MODE_SPEED;
   }
 }
@@ -270,7 +270,7 @@ void set_page() {
 void send_data() {
   rs485_tx();
   fastnet.boat_speed(sog);
-  delay(10);
+  delay(10);// display needs time to breath :) 
   fastnet.depth(depth_mm/100);
   delay(10);
   fastnet.timer(countdown_sec >= 0 ? countdown_sec : 0);
@@ -292,7 +292,6 @@ void setup() {
   Serial1.begin(FASTNET_BAUD, SERIAL_8O2);
   nmea.begin(4800);
 
-  delay(10);
   rs485_tx();
   fastnet.backlight(4);
   delay(10);
