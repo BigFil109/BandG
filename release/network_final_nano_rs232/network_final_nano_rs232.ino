@@ -7,7 +7,7 @@ AltSoftSerial altSerial;  // RX=D8, TX=D9
 
 // ---------------- FASTNET CONSTANTS ----------
 // Divisors (00, 01, 10, 11 in the top 2 bits of format byte)
-const uint8_t FASTNET_DIVISORS[] = {1, 10, 100, 1000};
+
 
 // FASTNET_FMT_BYTES: total bytes per channel record = 1(ch) +1(fmt)+ data bytes
 // index = format_id (lower 4 bits of the format byte)
@@ -20,11 +20,22 @@ const uint8_t FASTNET_DIVISORS[] = {1, 10, 100, 1000};
 //  - 8: 1+1+2 = 4
 //  - 11:1+1+4 = 6
 // index: 0 1 2 3 4 5 6 7 8 9 10 11 ...
-const uint8_t FASTNET_FMT_BYTES[] = {
+/*const uint8_t FASTNET_FMT_BYTES[] = {
     0,4,4,5,
     6,6,0,0,
     4,0,0,6,
     0,0,0,0
+};*/
+
+const uint8_t FASTNET_FMT_BYTES[] = {
+    //  id:  0  1  2  3
+          0, 4, 4, 5,
+    //      4  5  6  7
+          6, 6, 0, 6,
+    //      8  9 10 11
+          4, 0, 0, 6,
+    //     12 13 14 15
+          0, 0, 0, 0
 };
 
 #define FASTNET_CH_AWS               0x50
@@ -35,12 +46,9 @@ const uint8_t FASTNET_FMT_BYTES[] = {
 #define FASTNET_CH_WATER_TEMP_C      0x20
 #define FASTNET_CH_VMG               0x7F
 #define FASTNET_CH_LOG_TRIM          0xCF
-#define FASTNET_CH_TIMER             0x75   // Timer channel
+#define FASTNET_CH_TIMER             0x75   // Timer channel set to time
 #define FASTNET_CH_TRUE_WIND_SPEED   0x57
-
-//#define FASTNET_CH_TRUE_WIND_ANGLE   0x59
-
-
+#define FASTNET_CH_TRUE_WIND_ANGLE   0x59
 
 uint8_t fastnet_header[5] = {0xFF, 0x75, 0x14, 0x01, 0x77};
 uint8_t fastnet_buf[81];
@@ -96,6 +104,61 @@ void fastnet_add_channel(uint8_t ch, uint8_t fmt, uint8_t size, uint8_t divisor,
 
     fastnet_buf_size += need;
 }
+
+// ----------- SPECIAL DEPTH FORMAT: C1/C2/C3 -------------
+// ----------- SPECIAL DEPTH FORMAT: C1/C2/C3 -------------
+// Emits depth in three units as:
+//   C1 57 00 80 00 0F   (metres)
+//   C2 57 00 80 00 32   (feet)
+//   C3 57 00 80 00 08   (fathoms)
+//
+// We keep 57 00 80 fixed, and put the 16-bit depth in the last two bytes.
+// The frame-level checksum is handled later by fastnet_flush().
+void fastnet_add_depth_c123(float depth_m)
+{
+    const uint8_t bytes_per_chan = 6;      // Cx 57 00 80 hi lo
+    const uint8_t total_need     = bytes_per_chan * 3;
+
+    if (fastnet_buf_size + total_need > sizeof(fastnet_buf)) return;
+
+    uint8_t *p = &fastnet_buf[fastnet_buf_size];
+
+    // Convert to metres / feet / fathoms as integers
+    if (depth_m < 0) depth_m = 0;      // no negative depths
+
+    float depth_ft   = depth_m * 3.28084f;
+    float depth_fath = depth_m / 1.8288f;
+
+    uint16_t v_m   = (uint16_t)round(depth_m);
+    uint16_t v_ft  = (uint16_t)round(depth_ft);
+    uint16_t v_fth = (uint16_t)round(depth_fath);
+
+    // Clamp to 16-bit
+    if (v_m   > 0xFFFF) v_m   = 0xFFFF;
+    if (v_ft  > 0xFFFF) v_ft  = 0xFFFF;
+    if (v_fth > 0xFFFF) v_fth = 0xFFFF;
+
+    // Helper macro to write one Cx block
+    auto write_depth_block = [&](uint8_t ch, uint16_t value) {
+        *p++ = ch;          // C1 / C2 / C3
+        *p++ = 0x57;        // format: fmt-id 7, matches your examples
+        *p++ = 0x00;
+        *p++ = 0x80;
+        *p++ = (value >> 8) & 0xFF;   // high byte of depth
+        *p++ = value & 0xFF;          // low byte of depth
+    };
+
+    // C1 – metres
+    write_depth_block(0xC1, v_m);
+    // C2 – feet
+    write_depth_block(0xC2, v_ft);
+    // C3 – fathoms
+    write_depth_block(0xC3, v_fth);
+
+    fastnet_buf_size = (uint8_t)(p - fastnet_buf);
+}
+
+
 
 // ----------- TIMER CHANNEL PACKER (mm:ss, BCD, formatter 0101) -----------
 void fastnet_add_channel_timer_hhmm(uint8_t ch)
@@ -169,21 +232,16 @@ void process_sentence(char *s)
     {
             if (p[2][0]=='R')
             {
-                
                 nmea_awa = atof(p[1]);
                 if (nmea_awa > 180) nmea_awa = nmea_awa - 360; // fastnet runs from -180 to +180
-               
-               // Test send degres to app wind
-               // nmea_aws = nmea_awa/10;
-               //if(nmea_aws<0) nmea_aws =  nmea_aws * -1; 
-               nmea_aws = atof(p[3]);//real
-              
+                nmea_aws = (atof(p[3]))*10.0;//real wind seed, was showing out by 10x on display
             }
             if (p[2][0]=='T')
             {
                 nmea_twa = atof(p[1]);
-                if (nmea_twa >= 180) nmea_twa = nmea_twa - 360;
-                nmea_tws = atof(p[3]);
+                if (nmea_twa >= 180) nmea_twa = nmea_twa - 360; // fastnet runs from -180 to +180
+                nmea_twa = nmea_twa / 10; //180 send 18.0
+                nmea_tws = (atof(p[3]))*10.0;//was showing out by 10x on display
             }
         
     }
@@ -258,22 +316,22 @@ void loop()
 
     if (millis() - lastSend >= 750) {
         lastSend = millis();
-
-        fastnet_add_channel(FASTNET_CH_VOLTAGE,        8, 0, 1, nmea_volt);
-        fastnet_add_channel(FASTNET_CH_AWA,            8, 0, 0, nmea_awa);
-        fastnet_add_channel(FASTNET_CH_AWS,            1, 0, 1, nmea_aws);
-        fastnet_add_channel(FASTNET_CH_DEPTH,          1, 0, 1, nmea_depth);
-        fastnet_add_channel(FASTNET_CH_SPEED_KNOTS,    8, 0, 1, nmea_sog);
-        fastnet_add_channel(FASTNET_CH_WATER_TEMP_C,   1, 0, 1, nmea_temp);
-        fastnet_add_channel(FASTNET_CH_VMG,            8, 0, 2, nmea_vmg);
-        fastnet_add_channel_timer_hhmm(FASTNET_CH_TIMER);
-
-      //  fastnet_add_channel(FASTNET_CH_TRUE_WIND_ANGLE,       8, 0, 2, nmea_twa);
-      //  fastnet_add_channel(FASTNET_CH_TRUE_WIND_SPEED,       8, 0, 2, nmea_tws);
+        //working
+        fastnet_add_channel(FASTNET_CH_VOLTAGE,         8, 0, 1, nmea_volt);
+        fastnet_add_channel(FASTNET_CH_AWA,             8, 0, 0, nmea_awa);
+        fastnet_add_channel(FASTNET_CH_AWS,             1, 0, 1, nmea_aws);
+        fastnet_add_channel(FASTNET_CH_DEPTH,           8, 0, 1, 2.2);
+        // *** NEW: depth as C1/C2/C3 in 57 00 80 00 xx format ***
+        //fastnet_add_depth_c123(nmea_depth);
 
 
-     
-
+        fastnet_add_channel(FASTNET_CH_SPEED_KNOTS,     8, 0, 1, nmea_sog);
+        fastnet_add_channel(FASTNET_CH_WATER_TEMP_C,    1, 0, 1, nmea_temp);
+        fastnet_add_channel(FASTNET_CH_VMG,             8, 0, 2, nmea_vmg);
+        fastnet_add_channel(FASTNET_CH_TRUE_WIND_SPEED, 1, 0, 1, nmea_tws);
+        fastnet_add_channel(FASTNET_CH_TRUE_WIND_ANGLE, 1, 0, 1, nmea_twa);
+        fastnet_add_channel_timer_hhmm(FASTNET_CH_TIMER);        
+        
         fastnet_flush();
     }
 }
