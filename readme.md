@@ -91,28 +91,32 @@ R0  --> Rx1 19 (b-3)
 Shared grounds all input/output through the two boards
 
 
-## Nano wiring TBD...
+## Nano Every...
 ```
 R1 in  - Nema0183 feed
 Neg    --> GND (a4)
-+3v    --> 5v (b4)
-R1 out --> 
++3v    --> 3.3v (B15)
+R1 out --> D7 (A11)
 ```
 
 RS485
 ```
-GND  -- > GND 
-+5v  -- > 5v  
+GND  -- > GND (B2)
++5v  -- > 5v  (B4)
 A    --> display White
 B    --> display green
 
-D1  --> Tx1 
-DE	--> flow control 
-RE  --^
-R0  --> Rx1 
+D1  --> Tx1 (A1)
+DE	--> flow control D13(B16)
+RE  --^  SAME
+R0  --> Rx1  (A2)
 ```
 
-Nano TBD
+Every wiring
+```
+NEMA 0183 IN D6 (A9)
+```
+
 
 
 
@@ -166,6 +170,65 @@ brown +
 yellow green Fastnet
 ```
 
+
+move both displays to one board
+
+wiring diagram 
+
+
+## nano update file
+
+C:\Users\phili\AppData\Local\Arduino15\packages\arduino
+
+pins_arduino.h file I changed the lines:
+'''
+#define HWSERIAL2_MUX (PORTMUX_USART0_NONE_gc)
+#define HWSERIAL3_MUX (PORTMUX_USART2_NONE_gc)
+to the following:
+
+//#define HWSERIAL2_MUX (PORTMUX_USART0_NONE_gc)
+// Serial2 USART available on Arduino header pins
+// USART0 on mega4809 (standard pins)
+// Mapped to HWSERIAL2 in Serial library
+#define HWSERIAL2 (&USART0)
+#define HWSERIAL2_DRE_VECTOR (USART0_DRE_vect)
+#define HWSERIAL2_DRE_VECTOR_NUM (USART0_DRE_vect_num)
+#define HWSERIAL2_RXC_VECTOR (USART0_RXC_vect)
+#define HWSERIAL2_MUX (PORTMUX_USART0_DEFAULT_gc)
+#define PIN_WIRE_HWSERIAL2_RX (7)
+#define PIN_WIRE_HWSERIAL2_TX (2)
+
+//#define HWSERIAL3_MUX (PORTMUX_USART2_NONE_gc)
+// Serial3 USART available on Arduino header pins
+// USART2 on mega4809 (alternate pins)
+// Mapped to HWSERIAL3 in Serial library
+#define HWSERIAL3 (&USART2)
+#define HWSERIAL3_DRE_VECTOR (USART2_DRE_vect)
+#define HWSERIAL3_DRE_VECTOR_NUM (USART2_DRE_vect_num)
+#define HWSERIAL3_RXC_VECTOR (USART2_RXC_vect)
+#define HWSERIAL3_MUX (PORTMUX_USART2_ALT1_gc)
+#define PIN_WIRE_HWSERIAL3_RX (3)
+#define PIN_WIRE_HWSERIAL3_TX (6)
+'''
+Also altered the code at the end of the same file:
+'''
+#define SERIAL_PORT_MONITOR       Serial
+#define SERIAL_PORT_HARDWARE      Serial1
+#define SERIAL_PORT_USBVIRTUAL    Serial
+'''
+to this - not sure if it is correct, was using the code for a mega board as an example.
+'''
+#define SERIAL_PORT_MONITOR       Serial
+#define SERIAL_PORT_HARDWARE      Serial1
+#define SERIAL_PORT_HARDWARE1     Serial2
+#define SERIAL_PORT_HARDWARE2     Serial3
+#define SERIAL_PORT_USBVIRTUAL    Serial
+#define SERIAL_PORT_HARDWARE_OPEN   Serial1
+#define SERIAL_PORT_HARDWARE_OPEN1  Serial2
+#define SERIAL_PORT_HARDWARE_OPEN2  Serial3
+'''
+
+After those changes the ports will be usable as:
 
 
 

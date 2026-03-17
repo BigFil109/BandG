@@ -29,10 +29,9 @@ inline void rs485_tx() {
   digitalWrite(RS485_EN, HIGH);
 }
 
-void watchdog_init()
-{
+void watchdog_init() {
   // Nano Every watchdog setup
-  _PROTECTED_WRITE(WDT.CTRLA, WDT_PERIOD_4KCLK_gc); // approx 4 seconds
+  _PROTECTED_WRITE(WDT.CTRLA, WDT_PERIOD_4KCLK_gc);  // approx 4 seconds
 }
 
 // ================= DATA =================
@@ -276,6 +275,7 @@ void fastnet_add_channel_timer_hhmm(uint8_t ch) {
   // Data bytes: minute and hour
   p[2] = minute;
   p[3] = hour;
+  p[4] = 0;
 
   fastnet_buf_size += need;
 }
@@ -411,12 +411,12 @@ void parse_nmea(char *s) {
       if (p[2][0] == 'R') {
         nmea_awa = atof(p[1]);
         if (nmea_awa > 180) nmea_awa -= 360;
-        nmea_aws = atof(p[3]) * 100;
+        nmea_aws = atof(p[3]) * 10;
       }
       if (p[2][0] == 'T') {
         nmea_twa = atof(p[1]);
         if (nmea_twa > 180) nmea_twa -= 360;
-        nmea_tws = atof(p[3]) * 100;
+        nmea_tws = atof(p[3]) * 10;
       }
     }
     return;
@@ -527,7 +527,7 @@ void update_mode() {
   if (depth_mm < DEPTH_LIMIT_MM) {
     mode = MODE_DEPTH;
     return;
-  } 
+  }
 
   // Timer mode disabled until implemented
   // if (countdown_sec >= 0) {
@@ -541,18 +541,17 @@ void update_mode() {
     t_sog = millis();
     return;
   }
- 
+
   if (millis() - t_sog > 2500) {  // back to SOG after 2.5 seconds
     mode = MODE_SPEED;
     t_sog = millis();
   }
-
 }
 
 // ================= PAGE =================
 
 void set_page() {
-  if (prev_mode == mode) {// no re do on same page
+  if (prev_mode == mode) {  // no re do on same page
     return;
   }
   prev_mode = mode;
@@ -574,37 +573,35 @@ void set_page() {
 
 // ================= DATA =================
 
-void send_data()
-{
-    static uint8_t stage = 0;
-    static unsigned long last_send = 0;
+void send_data() {
+  static uint8_t stage = 0;
+  static unsigned long last_send = 0;
 
-    if (millis() - last_send < 10) return;   // pacing interval
+  if (millis() - last_send < 10) return;  // pacing interval
 
-    last_send = millis();
+  last_send = millis();
 
-    rs485_tx();
+  rs485_tx();
 
-    switch(stage)
-    {
-        case 0:
-            fastnet.boat_speed(sog);
-            break;
+  switch (stage) {
+    case 0:
+      fastnet.boat_speed(sog);
+      break;
 
-        case 1:
-            fastnet.depth(depth_mm / 100);
-            break;
+    case 1:
+      fastnet.depth(depth_mm / 100);
+      break;
 
-        case 2:
-            fastnet.deadrecon(brg_mark / 10);
-            break;
-    }
+    case 2:
+      fastnet.deadrecon(brg_mark / 10);
+      break;
+  }
 
-    Serial1.flush();
-    rs485_rx();
+  Serial1.flush();
+  rs485_rx();
 
-    stage++;
-    if(stage >= 3) stage = 0;
+  stage++;
+  if (stage >= 3) stage = 0;
 }
 
 
@@ -615,6 +612,112 @@ void send_light() {
   rs485_rx();
 }
 
+void fastnet_send_network_block03()
+{
+      // -------- FRAME 1 --------
+    const uint8_t frame1[] = {
+        0x00,0xE6,0xA7,0x87,0x9D,0xF7
+    };
+
+    // -------- FRAME 2 --------
+    const uint8_t frame2[] = {
+        0xFF,0x7E,0x73,0xBF,0x03,0xF7
+    };
+
+    // -------- FRAME 3 --------
+    // FF C2 73 73 01 3F 00 5C A7 F4
+    // 49 A9 00 00 26 D7 A5 7D DE CC
+    // AE 2F C7 86 65 7B FE FA F9 
+    // 2A 18 CB 5C FA BC F9 16 59 FD
+    const uint8_t frame3[] = {
+        0xFF,0xC2,0x73,0x73,0x01,0x3F,0x00,0x5C,0xA7,0xF4,
+        0x49,0xA9,0x00,0x00,0x26,0xD7,0xA5,0x7D,0xDE,0xCC,
+        0xAE,0x2F,0xC7,0x86,0x65,0x7B,0xFE,0xFA,0xF9,
+        0x2A,0x18,0xCB,0x5C,0xFA,0xBC,0xF9,0x16,0x59,0xFD
+    };
+
+    // -------- FRAME 4 --------
+    //FF FE 7E 7D FE 
+    //CE 15 F9 AA 32
+    // 22 AD 00 
+    const uint8_t frame4[] = {
+        0xFF,0xFE,0x7E,0x7D,0xFE,
+        0xCE,0x15,0xF9,0xAA,0x32,
+        0x22,0xAD, 0x00
+    };
+
+    // --- send exactly like real bus ---
+
+    Serial3.write(frame1, sizeof(frame1));
+       delay(14);
+    Serial3.write(frame2, sizeof(frame2));
+    delay(14);
+    
+
+    Serial3.write(frame3, sizeof(frame3));
+  
+    delay(32);
+    
+
+    Serial3.write(frame4, sizeof(frame4));
+    delay(100);
+    
+}
+
+void fastnet_send_network_block05()
+{
+      // -------- FRAME 1 --------
+    const uint8_t frame1[] = {
+        0x00,0xE6,0xA7,0x87,0x9D,0xF7
+    };
+
+    // -------- FRAME 2 --------
+    const uint8_t frame2[] = {
+        0xFF,0x7E,0x73,0xBF,0x05,0xF7
+    };
+
+    // -------- FRAME 3 --------
+    // FF C2 73 73 01 3F 00 5C A7 F4
+    // 2F C1 00 A6 D3 A1 5F 47 8B F6 
+    // DE C4 D1 6E EF DA C2 CB 64 FD 
+    // CB 16 59 FD
+    const uint8_t frame3[] = {
+        0xFF,0xC2,0x73,0x73,0x01,0x3F,0x00,0x5C,0xA7,0xF4,
+        0x2F,0xC1,0x00,0xA6,0xD3,0xA1,0x5F,0x47,0x8B,0xF6,
+        0xDE,0xC4,0xD1,0x6E,0xEF,0xDA,0xC2,0xCB,0x64,0xFD,
+        0xCB,0x16,0x59,0xFD
+    };
+
+    // -------- FRAME 4 --------
+    //FF FE 7E 7D FE
+    // C2 15 F9 AA 32
+    // 2E C7 00
+    const uint8_t frame4[] = {
+        0xFF,0xFE,0x7E,0x7D,0xFE,
+        0xC2,0x15,0xF9,0xAA,0x32,
+        0x2E,0xC7, 0x00
+    };
+
+    // --- send exactly like real bus ---
+
+    Serial3.write(frame1, sizeof(frame1));
+    Serial3.write(frame2, sizeof(frame2));
+    delay(14);
+    
+
+    Serial3.write(frame3, sizeof(frame3));
+  
+    delay(32);
+    
+
+    Serial3.write(frame4, sizeof(frame4));
+    delay(100);
+    
+}
+
+
+static unsigned long last_send03 = 0;
+  static unsigned long last_send05 = millis() +1000;
 // ================= SETUP =================
 
 void setup() {
@@ -641,7 +744,7 @@ void loop() {
   fastnet_rx();
   nmea_rx();
   update_mode();
- 
+
 
 
   if (millis() - t_data > 100) {
@@ -662,20 +765,32 @@ void loop() {
   }
 
   // Send Fastnet data every 100ms
-  if (millis() - lastSend >= 100) {
+   if (millis() - lastSend >= 100) {
     lastSend = millis();
+ 
+
 
     fastnet_add_channel(FASTNET_CH_SPEED_KNOTS, 8, 0, 1, sog);
-    fastnet_add_channel(FASTNET_CH_VOLTAGE, 8, 0, 1, nmea_volt);
-    fastnet_add_channel(FASTNET_CH_AWA, 8, 0, 0, nmea_awa);
-    fastnet_add_channel(FASTNET_CH_AWS, 1, 0, 1, nmea_aws);
-    fastnet_add_channel(FASTNET_CH_VMG, 8, 0, 1, sog * 10);
-    fastnet_add_channel(FASTNET_CH_TRUE_WIND_SPEED, 1, 0, 1, nmea_tws);
-    fastnet_add_channel(FASTNET_CH_TRUE_WIND_ANGLE, 1, 0, 1, nmea_twa);
+   // fastnet_add_channel(FASTNET_CH_VOLTAGE, 8, 0, 1, nmea_volt);
+   // fastnet_add_channel(FASTNET_CH_AWA, 8, 0, 0, nmea_awa);
+   // fastnet_add_channel(FASTNET_CH_AWS, 1, 0, 1, nmea_aws);
+   // fastnet_add_channel(FASTNET_CH_VMG, 8, 0, 1, sog * 10);
+  //  fastnet_add_channel(FASTNET_CH_TRUE_WIND_SPEED, 1, 0, 1, nmea_tws);
+   // fastnet_add_channel(FASTNET_CH_TRUE_WIND_ANGLE, 1, 0, 1, nmea_twa);
     fastnet_add_channel(FASTNET_CH_DEPTH, 8, 0, 1, depth_mm / 100);
     fastnet_add_channel_timer_hhmm(FASTNET_CH_TIMER);
 
     fastnet_flush();
+  }
+
+  if (millis() - last_send03 >= 2000) {
+    last_send03 = millis();
+    fastnet_send_network_block03();
+  }
+
+  if (millis() - last_send05 >= 2000) {
+    last_send05 = millis();
+    fastnet_send_network_block05();
   }
 
   wdt_reset();
